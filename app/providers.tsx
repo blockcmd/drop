@@ -22,7 +22,7 @@ const { wallets } = getDefaultWallets();
 // initialize and destructure wallets object
 
 const config = getDefaultConfig({
-  appName: 'GASLITE-UI', // Name your app
+  appName: 'BLOCKCMD_DROP', // Name your app
   projectId: "b0d1b0981d4d9953b696e9ae436c031c", // Enter your WalletConnect Project ID here
   wallets: [
     ...wallets,
