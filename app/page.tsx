@@ -1,22 +1,21 @@
-import { AirdropERC20 } from '@/components/airdrop-erc20';
-import { AirdropERC721 } from '@/components/airdrop-erc721';
-import { AirdropKlay } from '@/components/airdrop-klay';
-import Credits from '@/components/credits';
-import MobileWarning from '@/components/mobile-warning';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+import AirdropErc20Card from "@/components/airdrop-erc20-card";
+import AirdropKaiaCard from "@/components/airdrop-kaia-card";
+import AirdropNftsCard from "@/components/airdrop-nfts-card";
 
 export default function Home() {
-
   return (
-    <main className="flex flex-col gap-8 items-center justify-center py-12 px-4 lg:p-36">
-      <div className="hidden lg:flex lg:flex-col lg:gap-12 max-w-3xl">
-        <ConnectButton />
-        <AirdropKlay />
-        <AirdropERC20 />
-        <AirdropERC721 />
-        <Credits />
+    <div className="flex flex-col gap-16 text-left w-[768px]">
+      <ConnectButton />
+      <div className="flex flex-col gap-2">
+        <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">Airdrop</h1>
+        <p className="leading-7 [&:not(:first-child)]:mt-6">A simple tool to airdrop on Kaia chain</p>
       </div>
-      <MobileWarning />
-    </main>
+      <div className="flex flex-col gap-8">
+        <AirdropKaiaCard />
+        <AirdropErc20Card />
+        <AirdropNftsCard />
+      </div>
+    </div>
   );
 }
