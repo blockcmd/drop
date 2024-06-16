@@ -1,4 +1,4 @@
-import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -7,12 +7,11 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { AirdropERC721 } from "@/components/airdrop-erc721";
 
-export default function Home() {
+export default function Loading() {
   return (
     <div className="flex flex-col gap-12">
-      <ConnectButton />
+      <Skeleton className="w-40 h-8" />
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -24,7 +23,7 @@ export default function Home() {
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
-      <AirdropERC721 />
+      <Skeleton className="w-[768px] h-[200px]" />
     </div>
   );
 }
