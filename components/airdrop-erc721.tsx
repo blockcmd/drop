@@ -1,57 +1,38 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { array, z } from "zod";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useToast } from "@/components/ui/use-toast";
 import {
   type BaseError,
   useWaitForTransactionReceipt,
   useWriteContract,
   useAccount,
-  useReadContract,
   useReadContracts
 } from "wagmi";
-import { parseEther } from "viem";
+import { parseEther, formatEther, formatUnits, Address } from "viem";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Check } from "lucide-react";
+import { Loader2, Check, Plus, Info, Trash2, ThumbsUp, CircleX } from "lucide-react";
 import { abi } from "./abi";
 import { erc721Abi } from "./erc721-abi";
 import { CONTRACT_ADDRESS_BAOBAB, CONTRACT_ADDRESS_CYPRESS } from "./contract";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useChainId } from 'wagmi'
+import { useSearchParams } from "next/navigation";
 
-const formSchema = z.object({
-  addresses: z.string(),
-  airdropNftIds: z.string(),
-});
+type AirdropItem = {
+  address: string;
+  nftId: string;
+};
+
 
 export function AirdropERC721() {
-  const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const erc721TokenAddress = searchParams.get("address");
+  const [airdropList, setAirdropList] = useState<AirdropItem[]>([]);
   const account = useAccount()
   const chainId = useChainId()
-  const [erc721TokenAddress, setErc721TokenAddress] = useState<string>("");
-  const [erc721TokenSymbol, setErc721TokenSymbol] = useState<string>("");
   const { data: hash, error, isPending, writeContract } = useWriteContract();
   const { data: approveHash, error: approveError, isPending: approveIsPending, writeContract: approveWriteContract } = useWriteContract();
 
@@ -78,54 +59,104 @@ export function AirdropERC721() {
     ],
   });
 
-  useEffect(() => {
-    if (tokenInfoSuccess) {
-      setErc721TokenSymbol(tokenInfoData[1]?.result?.toString() ?? "")
+    // state for file input
+    const [file, setFile] = useState<File | undefined>(undefined);
+
+    useEffect(() => {
+      const fileReader = new FileReader();
+      fileReader.onload = function (e: ProgressEvent<FileReader>) {
+        if (e.target) {
+          const text = e.target.result;
+          csvFileToArray(text);
+        }
+      };
+      if (file) {
+        fileReader.readAsText(file);
+      }
+    }, [file]);
+  
+    function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+      const file = e.target.files?.[0];
+      if (file) {
+        setFile(file);
+      }
     }
-  }, [tokenInfoData, tokenInfoSuccess])
 
-
-  // 1. Define your form.
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-  });
-
-  useEffect(() => {
-    if (error) { 
-      toast({
-        variant: "destructive",
-        title: "Transaction reverted",
-        description: `${(error as BaseError).shortMessage || error.message}`,
+      // function to convert the csv file to airdropList
+  function csvFileToArray(text: string | ArrayBuffer | null) {
+    if (typeof text === "string") {
+      const rows = text.split("\n").filter((item) => item !== "");
+      const airdropList = rows.map((row) => {
+        const [address, nftId] = row.split(",");
+        return { address, nftId };
       });
+      setAirdropList(airdropList);
     }
-  }, [error, toast])
+  }
+
+  function handleAddAirdropList() {
+    setAirdropList(airdropList.concat({ address: "", nftId: "" }));
+  }
+
+  function handleResetAirdropList() {
+    setAirdropList([]);
+  }
+
+  function handleAddressChange(index: number) {
+    return (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newAirdropList = [...airdropList];
+      newAirdropList[index].address = e.target.value;
+      setAirdropList(newAirdropList);
+    };
+  }
+
+  function handleNftIdChange(index: number) {
+    return (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newAirdropList = [...airdropList];
+      newAirdropList[index].nftId = e.target.value;
+      setAirdropList(newAirdropList);
+    };
+  }
 
   // 2. Define a submit handler.
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    const tokenAddress: (`0x${string}`) = erc721TokenAddress as `0x${string}`;
-    const addresses: (`0x${string}`)[] = values.addresses.split(",").map((address) => address.replace(/\s/g, "") as `0x${string}`);
-    const airdropNftIds: bigint[] = values.airdropNftIds.split(",").map((id) => BigInt(id));
+  function executeAirdrop() {
+    // sanitize airdropList from any empty objects
+    const airdropListFiltered = airdropList.filter(
+      (item) => item.nftId !== "" && item.address !== ""
+    );
+
+    // create addresses list
+    const addresses: Address[] = airdropListFiltered.map(
+      (item) => item.address.replace(/\s/g, "") as Address
+    );
+
+    // create airdropAmounts list
+    const airdropNftIds: bigint[] = airdropListFiltered.map((item) =>
+      parseEther(item.nftId)
+    );
     writeContract({
       abi,
       address: chainId === 1001 ? CONTRACT_ADDRESS_BAOBAB : CONTRACT_ADDRESS_CYPRESS,
       functionName: 'airdropERC721',
-      args: [tokenAddress, addresses, airdropNftIds]
+      args: [erc721TokenAddress as Address, addresses, airdropNftIds]
     })
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Transaction reverted",
-        description: `${(error as BaseError).shortMessage.split(":")[1]}`,
-      });
-    }
   }
 
-  function onApprove() {
+  function setApproval() {
     approveWriteContract({
       abi: erc721Abi,
-      address: erc721TokenAddress as `0x${string}`,
+      address: erc721TokenAddress as Address,
       functionName: 'setApprovalForAll',
       args: [chainId === 1001 ? CONTRACT_ADDRESS_BAOBAB : CONTRACT_ADDRESS_CYPRESS, true]
+    })
+  }
+
+  function revokeApproval() {
+    approveWriteContract({
+      abi: erc721Abi,
+      address: erc721TokenAddress as Address,
+      functionName: 'setApprovalForAll',
+      args: [chainId === 1001 ? CONTRACT_ADDRESS_BAOBAB : CONTRACT_ADDRESS_CYPRESS, false]
     })
   }
 
@@ -144,218 +175,251 @@ export function AirdropERC721() {
     });
 
   return (
-    <Card className="w-full border-0 shadow-lg lg:max-w-3xl">
-      <CardHeader>
-        <CardTitle>Aidrop ERC721 Token</CardTitle>
-        <CardDescription>
-          Use this form to airdrop ERC721 tokens to multiple addresses.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-row gap-4 items-center">
-            <div className="bg-primary text-secondary rounded-full h-8 w-8 flex justify-center items-center">
-              <p>1</p>
-            </div>
-            <h3 className="scroll-m-20 text-xl font-semibold tracking-tight">
-              Select a token
-            </h3>
-          </div>
-          <div className="flex flex-col gap-4 pl-8">
-            <div className="flex flex-col gap-3">
-              <Label htmlFor="tokenAddress">ERC721 Token address</Label>
-              <Input
-                name="tokenAddress"
-                type="text"
-                placeholder="Paste address of the token here"
-                value={erc721TokenAddress}
-                onChange={(e) => setErc721TokenAddress(e.target.value)}
-              />
-            </div>
-            {
-              tokenInfoData ? (
-                <div className="flex flex-col gap-2">
-                  <div className="flex flex-row gap-4 items-center">
-                    <div className="bg-gray-300 rounded-full h-12 w-12 flex justify-center items-center">
-                      <p>{tokenInfoData[1]?.result?.toString().charAt(0)}</p>
-                    </div>
-                    <div className="flex flex-col">
-                      <p className="font-semibold text-lg">{tokenInfoData[2]?.result?.toString()}</p>
-                      <p className="font-mono text-sm">{tokenInfoData[1]?.result?.toString()}</p>
-                    </div>
-                  </div>
-                  <p>Is approval for transfer: {tokenInfoData[0]?.result?.toString() ?? "false"}</p>
-                </div>
-              ) : <p className="mt-4">No results found.</p>
+    <div className="flex flex-col gap-12 w-[768px]">
+      <div className="flex flex-col gap-6">
+        <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
+          Airdrop NFT on{" "}
+          <a
+            className="underline underline-offset-4 text-blue-500"
+            href="https://coinmarketcap.com/currencies/klaytn/"
+            target="_blank"
+          >
+            KAIA
+          </a>
+        </h1>
+        <p>Airdrop NFTs to multiple addresses at once.</p>
+      </div>
+      <div className="flex flex-col gap-4">
+        <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0">
+          Step 1
+        </h2>
+        <div className="flex flex-row gap-2 items-center">
+          <Info className="h-4 w-4" />
+          <p>Review the token information</p>
+        </div>
+        {tokenInfoData ? (
+          <div
+            className={
+              tokenInfoData[0]?.result === false
+                ? "flex flex-col gap-2 border border-destructive p-4"
+                : "flex flex-col gap-2 border border-primary p-4"
             }
-          </div>
-        </div>
-        <div className="flex flex-col gap-4 mt-8">
-          <div className="flex flex-row gap-4 items-center">
-            <div className="bg-primary text-secondary rounded-full h-8 w-8 flex justify-center items-center">
-              <p>2</p>
-            </div>
-            <h3 className="scroll-m-20 text-xl font-semibold tracking-tight">
-              Set approval for the airdrop contract
-            </h3>
-          </div>
-          <div className="pl-8">
-            {approveIsPending ? (
-              <Button disabled>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Please wait
-              </Button>
-            ) : (
-              <Button onClick={onApprove}>{`Approve ${erc721TokenSymbol}`}</Button>
-            )}
-            <div className="flex flex-col gap-4 mt-4">
-              {approveHash ? (
-                <div className="flex flex-row gap-2">
-                  Hash:
-                  <a
-                    target="_blank"
-                    className="text-blue-500 underline"
-                    href={chainId === 1001 ? `https://baobab.klaytnfinder.io/tx/${approveHash}` : `https://klaytnfinder.io/tx/${hash}`}
-                  >
-                    {truncateAddress(approveHash)}
-                  </a>
-                </div>
-              ) : (
-                <>
-                  <div className="flex flex-row gap-2">
-                    Hash: no transaction hash until after submission
-                  </div>
-                  <Badge className="w-fit" variant="outline">No approval yet</Badge>
-                </>
-              )}
-              {isApproveConfirming && (
-                <Badge className="w-fit" variant="secondary">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Waiting for confirmation...
-                </Badge>
-              )}
-              {isApproveConfirmed && (
-                <Badge className="flex flex-row items-center w-fit bg-green-500 cursor-pointer">
-                  <Check className="mr-2 h-4 w-4" />
-                  Approval confirmed!
-                </Badge>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-col gap-4 mt-8">
-          <div className="flex flex-row gap-4 items-center">
-            <div className="bg-primary text-secondary rounded-full h-8 w-8 flex justify-center items-center">
-              <p>3</p>
-            </div>
-            <h3 className="scroll-m-20 text-xl font-semibold tracking-tight">
-              Enter the airdrop details
-            </h3>
-          </div>
-          <div className="flex flex-col pl-8">
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-                <FormField
-                  control={form.control}
-                  name="addresses"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Addresses</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Enter addresses"
-                          type="text"
-                          {...field}
-                          value={field.value ?? ""}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        Addresses
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="airdropNftIds"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Airdrop NFT IDs</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Enter NFT IDs"
-                          type="text"
-                          {...field}
-                          value={field.value ?? ""}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        IDs of the NFT that you will airdrop
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                {isPending ? (
-                  <Button disabled>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Please wait
-                  </Button>
-                ) : (
-                  <Button type="submit">Airdrop ERC721</Button>
-                )}
-                
-              </form>
-            </Form>
-          </div>
-          
-        </div>
-        
-      </CardContent>
-      <CardFooter className="flex flex-col gap-2 items-start h-fit">
-        <div className="flex flex-row gap-4 items-center">
-          <div className="bg-primary text-secondary rounded-full h-8 w-8 flex justify-center items-center">
-            <p>4</p>
-          </div>
-          <h3 className="scroll-m-20 text-xl font-semibold tracking-tight">
-            Monitor airdrop status
-          </h3>
-        </div>
-        <div className="flex flex-col gap-4 pl-8">
-          {hash ? (
-            <div className="flex flex-row gap-2">
-              Hash:
-              <a
-                target="_blank"
-                className="text-blue-500 underline"
-                href={chainId === 1001 ? `https://baobab.klaytnfinder.io/tx/${hash}` : `https://klaytnfinder.io/tx/${hash}`}
-              >
-                {truncateAddress(hash)}
-              </a>
-            </div>
-          ) : (
-            <>
-              <div className="flex flex-row gap-2">
-                Hash: no transaction hash until after submission
+          >
+            <div className="flex flex-row gap-4 items-center h-16">
+              <div className="bg-gray-300 rounded-full h-12 w-12 flex justify-center items-center">
+                <p>{tokenInfoData[1]?.result?.toString().charAt(0)}</p>
               </div>
-              <Badge className="w-fit" variant="outline">No transaction yet</Badge>
-            </>
-          )}
-          {isConfirming && (
-            <Badge className="w-fit" variant="secondary">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Waiting for confirmation...
-            </Badge>
-          )}
-          {isConfirmed && (
-            <Badge className="flex flex-row items-center w-fit bg-green-500 cursor-pointer">
-              <Check className="mr-2 h-4 w-4" />
-              Transaction confirmed!
-            </Badge>
-          )}
+              <div className="flex flex-col">
+                <p className="font-semibold text-lg">
+                  {tokenInfoData[2]?.result?.toString()}
+                </p>
+                <p className="font-mono text-sm">
+                  {tokenInfoData[1]?.result?.toString()}
+                </p>
+              </div>
+            </div>
+            <p
+              className={
+                tokenInfoData[0]?.result === false
+                  ? "text-destructive"
+                  : "text-primary"
+              }
+            >
+              {tokenInfoData[0]?.result === false
+                ? "You have not set approval"
+                : "You are ready to airdrop"}
+            </p>
+            <Button
+              onClick={tokenInfoData[0]?.result === false ? setApproval : revokeApproval}
+              className={`w-[300px] mt-4 ${tokenInfoData[0]?.result === false ? "bg-primary" : "bg-destructive"}`}
+            >
+              {tokenInfoData[0]?.result === false ? <ThumbsUp className="h-4 w-4 mr-2" /> : <CircleX className="h-4 w-4 mr-2" />}
+              {tokenInfoData[0]?.result === false ? "Set approval" : "Revoke approval"}
+            </Button>
+          </div>
+        ) : (
+          <Skeleton className="w-full h-16" />
+        )}
+      </div>
+      <div className="flex flex-col gap-4">
+        <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0">
+          Step 2
+        </h2>
+        <div className="flex flex-row gap-2 items-center">
+          <Info className="h-4 w-4" />
+          <p>Create an airdrop list</p>
         </div>
-      </CardFooter>
-    </Card>
+        <Tabs defaultValue="manual" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="manual">Manual</TabsTrigger>
+            <TabsTrigger value="file-input">File</TabsTrigger>
+          </TabsList>
+          <TabsContent value="manual" className="flex flex-col gap-4">
+            <p>
+              <span className="inline-block mr-2">
+                <Info className="h-4 w-4" />
+              </span>
+              Input addresses and corresponding amounts manually. Best for
+              airdropping to small amount of addreses
+            </p>
+            {
+              // if airdropList is empty, show the message
+              airdropList.length === 0 ? (
+                <p className="text-md text-muted-foreground">
+                  No addresses added. Click the + button below to add.
+                </p>
+              ) : (
+                // if airdropList is not empty, show the list
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <h2>Addresses</h2>
+                    <h2>Amounts</h2>
+                  </div>
+                  {airdropList.map((item, index) => (
+                    <div key={index} className="flex flex-row gap-4">
+                      <Input
+                        placeholder="Enter an address"
+                        value={item.address}
+                        onChange={handleAddressChange(index)}
+                      />
+                      <Input
+                        placeholder="Enter an amount"
+                        value={item.nftId}
+                        onChange={handleNftIdChange(index)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )
+            }
+            <div className="flex flex-row gap-2">
+              <Button
+                onClick={handleAddAirdropList}
+                variant="outline"
+                size="icon"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+              <Button
+                onClick={handleResetAirdropList}
+                variant="outline"
+                size="icon"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </TabsContent>
+          <TabsContent className="flex flex-col gap-4" value="file-input">
+            <p>
+              <span className="inline-block mr-2">
+                <Info className="h-4 w-4" />
+              </span>
+              Upload a .csv file containing addresses and amounts.
+            </p>
+            <Input
+              type="file"
+              accept=".csv"
+              onChange={handleImportFile}
+              className="w-full"
+            />
+            {
+              // if airdropList is empty, show the message
+              airdropList.length === 0 ? (
+                <p className="text-md text-muted-foreground">
+                  No addresses uploaded.
+                </p>
+              ) : (
+                // if airdropList is not empty, show the list
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <h2>Addresses</h2>
+                    <h2>Amounts</h2>
+                  </div>
+                  {airdropList.map((item, index) => (
+                    <div key={index} className="flex flex-row gap-4">
+                      <Input
+                        placeholder="Enter an address"
+                        value={item.address}
+                        readOnly
+                      />
+                      <Input
+                        placeholder="Enter an amount"
+                        value={item.nftId}
+                        readOnly
+                      />
+                    </div>
+                  ))}
+                </div>
+              )
+            }
+          </TabsContent>
+        </Tabs>
+      </div>
+      <div className="flex flex-col gap-4">
+        <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0">
+          Step 4
+        </h2>
+        <div className="flex flex-row gap-2 items-center">
+          <Info className="h-4 w-4" />
+          <p>Execute the airdrop</p>
+        </div>
+        {isPending ? (
+          <Button className="w-[300px]" disabled>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Please confirm in your wallet
+          </Button>
+        ) : (
+          <Button className="w-[300px]" onClick={executeAirdrop}>
+            Airdrop NFTs
+          </Button>
+        )}
+      </div>
+      <div className="flex flex-col gap-4">
+        <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0">
+          Transaction status
+        </h2>
+        {isConfirming && (
+          <div className="flex flex-row gap-2 text-yellow-500 font-semibold text-lg">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            Waiting for confirmation...
+          </div>
+        )}
+        {isConfirmed && (
+          <div className="flex flex-row gap-2 text-green-500 font-semibold text-lg">
+            <Check className="h-6 w-6" />
+            Transaction confirmed!
+          </div>
+        )}
+        {
+          // if there is an error, show the error message
+          error && (
+            <div>
+              Transaction reverted:{" "}
+              {(error as BaseError).shortMessage.split(":")[1]}
+            </div>
+          )
+        }
+        {hash ? (
+          <div className="flex flex-row gap-2">
+            Transaction hash:
+            <a
+              target="_blank"
+              className="text-blue-500 underline"
+              href={
+                chainId === 1001
+                  ? `https://baobab.klaytnfinder.io/tx/${hash}`
+                  : `https://klaytnfinder.io/tx/${hash}`
+              }
+            >
+              {truncateAddress(hash)}
+            </a>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-row gap-2">Nothing yet :)</div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
