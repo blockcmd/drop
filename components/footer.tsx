@@ -1,6 +1,6 @@
 export default function Footer() {
   return (
-    <div className="flex flex-col gap-8 items-center justify-center py-12 px-4">
+    <div className="flex flex-col gap-8 items-center justify-center py-12 px-4 font-mono">
       <div className="hidden lg:flex lg:flex-col lg:gap-4 max-w-3xl border-t-2">
         <h2 className="font-bold text-2xl mt-4">Attribution</h2>
         <p>
