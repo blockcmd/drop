@@ -22,7 +22,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <Providers>
-          <main className="flex flex-col gap-8 items-center justify-center py-12 px-4 lg:p-36">
+          <main className="flex flex-col gap-8 items-center justify-center py-12 px-4 lg:p-36 font-mono">
             <div className="hidden lg:flex lg:flex-col lg:gap-12 max-w-3xl">
               {children}
             </div>
